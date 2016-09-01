@@ -22,5 +22,8 @@
   "bugs": {
     "url": "https://github.com/syarul/three-path-deform/issues"
   },
-  "homepage": "https://github.com/syarul/three-path-deform"
+  "homepage": "https://github.com/syarul/three-path-deform",
+  "dependencies": {
+    "express": "^4.14.0"
+  }
 }
