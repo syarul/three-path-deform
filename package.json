@@ -1,0 +1,26 @@
+{
+  "name": "three-path-deform",
+  "version": "0.1.0",
+  "description": "A utily tool for threejs to deform object along a spline path",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/syarul/three-path-deform"
+  },
+  "keywords": [
+    "path deform",
+    "threejs",
+    "tangent",
+    "deform",
+    "path animation"
+  ],
+  "author": "syarul",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/syarul/three-path-deform/issues"
+  },
+  "homepage": "https://github.com/syarul/three-path-deform"
+}
