@@ -1,35 +1,37 @@
-var THREEPathDeform = function (up, axis, tangent) {
+var THREEPathDeform = function(pathCount, up, axis, tangent) {
   if (!THREE) {
     throw new Error('THREEjs not found');
-    return false;
   }
 
   var self = this,
-      counter = 0;
+    counter = 0;
+
+  this.splineList = new Array(pathCount);
+
   this.tangent = tangent ? new THREE.Vector3(tangent.x, tangent.y, tangent.z) : new THREE.Vector3();
   this.axis = axis ? new THREE.Vector3(axis.x, axis.y, axis.z) : new THREE.Vector3();
   this.up = up ? new THREE.Vector3(up.x, up.y, up.z) : new THREE.Vector3(0, 1, 0);
 
-  this.generatePath = function (vectorArray, numPoints, options) {
+  this.generatePath = function(index, vectorArray, numPoints, options) {
 
-    var options = options || {};
+    options = options || {};
 
     this.color = options.color || 0xFFFFFF;
     this.visiblity = options.visiblity || false;
 
-    var splineVector = vectorArray.map(function (v) {
+    var splineVector = vectorArray.map(function(v) {
       return new THREE.Vector3(v.x, v.y, v.z);
     });
 
-    self.spline = new THREE.CatmullRomCurve3(splineVector);
+    self.splineList[index] = new THREE.CatmullRomCurve3(splineVector);
 
     var splineMat = new THREE.LineBasicMaterial({
       color: this.color,
       visible: this.visiblity
     });
 
-    var geometry = new THREE.Geometry();
-    var splinePoints = self.spline.getPoints(numPoints);
+    var geometry = new THREE.Geometry(),
+      splinePoints = self.splineList[index].getPoints(numPoints);
 
     for (var i = 0; i < splinePoints.length; i++) {
       geometry.vertices.push(splinePoints[i]);
@@ -37,34 +39,58 @@ var THREEPathDeform = function (up, axis, tangent) {
 
     var line = new THREE.Line(geometry, splineMat);
 
-    if (scene) scene.add(line);else throw new Error('scene is not declared or visiblity option is set to false');
+    if (scene) scene.add(line);
+    else throw new Error('scene is not declared or visiblity option is set to false');
+
+    return line.uuid;
+  };
+
+  //generate vectors from buffer geometry
+  this.generateVectorsFromBufferGeometry = function(bufferGeometry) {
+    if (bufferGeometry.type !== 'BufferGeometry') {
+      throw new Error('object is not a buffer geometry');
+    }
+    var attributesList = bufferGeometry.getAttribute('position');
+    attributesList.normalize = true;
+    var vectors = [];
+    for (var i = 0; i < attributesList.count; i++) {
+      vectors.push(self.posByAttr(attributesList, i));
+    }
+    return vectors;
+  };
+
+  this.posByAttr = function(attributesList, index) {
+    var pos = {};
+    pos['x'] = attributesList.getX(index);
+    pos['y'] = attributesList.getY(index);
+    pos['z'] = attributesList.getZ(index);
+    return pos;
   };
 
   // skeleton generator for objects
-  this.generateSkeleton = function (boneVectors, options) {
+  this.generateSkeleton = function(boneVectors, options) {
 
     this.color = options.color || 0xFFFFFF;
     this.visiblity = options.visiblity || false;
     this.reverse = options.reverse || false;
 
-    var self_ = this;
+    var self_ = this,
+      boneList = [];
 
-    var boneList = [];
-
-    boneVectors.forEach(function (bone, i, r) {
+    boneVectors.forEach(function(bone) {
 
       var _bone = new THREE.Geometry();
 
-      bone.forEach(function (v) {
+      bone.forEach(function(v) {
         _bone.vertices.push(new THREE.Vector3(v.x, v.y, v.z));
       });
 
       var lineMat = new THREE.LineBasicMaterial({
-        color: self_.color,
-        visible: self_.visiblity
-      });
+          color: self_.color,
+          visible: self_.visiblity
+        }),
 
-      var boneLine = new THREE.Line(_bone, lineMat);
+        boneLine = new THREE.Line(_bone, lineMat);
 
       boneList.push(boneLine);
     });
@@ -73,17 +99,18 @@ var THREEPathDeform = function (up, axis, tangent) {
       boneList.reverse();
     }
 
-    boneList.forEach(function (ls, i) {
-      if (scene) scene.add(ls);else throw new Error('scene is not declared');
+    boneList.forEach(function(ls) {
+      if (scene) scene.add(ls);
+      else throw new Error('scene is not declared');
     });
 
-    return boneList.map(function (bone) {
+    return boneList.map(function(bone) {
       return bone.uuid;
     });
   };
 
   // generate interval
-  this.generateInterval = function (start, count, interval) {
+  this.generateInterval = function(start, count, interval) {
     var res = [];
     for (var i = 0; i < count; i++) {
       var cell = {};
@@ -95,7 +122,7 @@ var THREEPathDeform = function (up, axis, tangent) {
     return res;
   };
 
-  this.offsetCounter = function (c, high, low) {
+  this.offsetCounter = function(c, high, low) {
     if (c > high) {
       return c - high;
     } else if (c < low) {
@@ -105,9 +132,9 @@ var THREEPathDeform = function (up, axis, tangent) {
     }
   };
 
-  this.getChildBase = function (uuid) {
+  this.getChildBase = function(uuid) {
     if (scene) {
-      var index = scene.children.map(function (child) {
+      var index = scene.children.map(function(child) {
         return child.uuid;
       }).indexOf(uuid);
       return scene.children[index];
@@ -116,7 +143,7 @@ var THREEPathDeform = function (up, axis, tangent) {
     }
   };
 
-  this.deformObject = function (object, objectName, interval, verticesArray, options) {
+  this.deformObject = function(splineIndex, object, objectName, interval, verticesArray, options) {
 
     options = options || {};
 
@@ -127,23 +154,22 @@ var THREEPathDeform = function (up, axis, tangent) {
     this.intervalMin = options.intervalMin || 0.22;
     this.opacityIncrement = options.opacityIncrement || 0.2;
 
-    var that = this,
-        lses = [];
+    var lses = [];
 
-    objectName.forEach(function (a, i) {
+    objectName.forEach(function(a, i) {
       lses.push(self.getChildBase(objectName[i]));
     });
 
-    var c = objectName.map(function (a, i) {
+    var c = objectName.map(function(a, i) {
       return self.offsetCounter(counter, interval[i].out, interval[i].in);
     });
 
     if (counter <= 1) {
-      lses.forEach(function (ls, i) {
+      lses.forEach(function(ls, i) {
 
-        ls.position.copy(self.spline.getPointAt(c[i]));
+        ls.position.copy(self.splineList[splineIndex].getPointAt(c[i]));
 
-        self.tangent = self.spline.getTangentAt(c[i]).normalize();
+        self.tangent = self.splineList[splineIndex].getTangentAt(c[i]).normalize();
 
         self.axis.crossVectors(self.up, self.tangent).normalize();
 
@@ -154,8 +180,8 @@ var THREEPathDeform = function (up, axis, tangent) {
 
       var vectors = [];
 
-      lses.forEach(function (ls) {
-        ls.geometry.vertices.forEach(function (v) {
+      lses.forEach(function(ls) {
+        ls.geometry.vertices.forEach(function(v) {
           var o = v.clone();
           o.applyMatrix4(ls.matrixWorld);
           vectors.push(o);
@@ -164,8 +190,8 @@ var THREEPathDeform = function (up, axis, tangent) {
 
       var child = self.getChildBase(object);
 
-      verticesArray.forEach(function (v, i) {
-        for (attr in child.geometry.vertices[v]) {
+      verticesArray.forEach(function(v, i) {
+        for (var attr in child.geometry.vertices[v]) {
           child.geometry.vertices[v][attr] = vectors[i][attr];
         }
       });
@@ -194,7 +220,7 @@ var THREEPathDeform = function (up, axis, tangent) {
         } else {
           child.material.opacity = 1;
         }
-      } else {}
+      }
 
       counter += this.counterInterval;
     } else {
